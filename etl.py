@@ -180,6 +180,20 @@ dias_unicos = len(set(r["data"] for r in records if r["data"] != "Indefinida"))
 media_minutos_sessao = round((total_segundos / 60.0) / total_sessoes, 1) if total_sessoes > 0 else 0
 media_horas_dia_estudado = round(total_horas / dias_unicos, 2) if dias_unicos > 0 else 0
 
+# Timestamp e metadados de atualização com fuso horário de Brasília (UTC-3)
+tz_brasilia = datetime.timezone(datetime.timedelta(hours=-3))
+now = datetime.datetime.now(tz_brasilia)
+data_atualizacao = now.strftime("%d/%m/%Y às %H:%M")
+data_atualizacao_iso = now.isoformat()
+
+try:
+    mtime = os.path.getmtime(file_path)
+    data_modificacao_planilha = datetime.datetime.fromtimestamp(mtime, tz=tz_brasilia).strftime("%d/%m/%Y às %H:%M")
+except Exception:
+    data_modificacao_planilha = data_atualizacao
+
+ultima_sessao_formatada = records[-1]["data_formatada"] if records else ""
+
 output_data = {
     "summary": {
         "total_horas": total_horas,
@@ -189,7 +203,11 @@ output_data = {
         "media_horas_dia_estudado": media_horas_dia_estudado,
         "total_disciplinas": len(set(r["disciplina"] for r in records)),
         "data_inicio": records[0]["data_formatada"] if records else "",
-        "data_fim": records[-1]["data_formatada"] if records else ""
+        "data_fim": records[-1]["data_formatada"] if records else "",
+        "data_atualizacao": data_atualizacao,
+        "data_atualizacao_iso": data_atualizacao_iso,
+        "data_modificacao_planilha": data_modificacao_planilha,
+        "ultima_sessao": ultima_sessao_formatada
     },
     "records": records
 }
@@ -207,3 +225,5 @@ with open(js_path, "w", encoding="utf-8") as f:
 print(f"ETL finalizado com sucesso!")
 print(f"Total Horas: {total_horas}h em {total_sessoes} sessões ({dias_unicos} dias únicos de estudo).")
 print(f"Período: de {records[0]['data_formatada']} até {records[-1]['data_formatada']}")
+print(f"Última atualização da base: {data_atualizacao}")
+

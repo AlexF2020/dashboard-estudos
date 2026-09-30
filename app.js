@@ -1,11 +1,13 @@
 // State Management
 let allData = [];
 let filteredData = [];
+let summaryData = {};
 let currentPage = 1;
 const pageSize = 12;
 let sortColumn = 'data';
 let sortDirection = 'desc';
 let currentTheme = localStorage.getItem('study_dashboard_theme') || 'dark';
+let listenersAttached = false;
 
 // Chart Instances
 let chartTimeline = null;
@@ -18,26 +20,41 @@ document.addEventListener('DOMContentLoaded', () => {
   // Apply saved theme immediately
   document.documentElement.setAttribute('data-theme', currentTheme);
 
-  if (typeof window.STUDY_DATA !== 'undefined' && window.STUDY_DATA.records) {
-    allData = window.STUDY_DATA.records;
-    initDashboard();
-  } else {
-    // Fallback: Fetch JSON
-    fetch('study_data.json')
-      .then(res => res.json())
+  // Se estiver em servidor HTTP/HTTPS (GitHub Pages, localhost), busca JSON fresco com cache-busting
+  const isHttp = window.location.protocol.startsWith('http');
+  if (isHttp) {
+    fetch(`study_data.json?t=${Date.now()}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-        allData = data.records;
+        allData = data.records || [];
+        summaryData = data.summary || {};
         initDashboard();
       })
       .catch(err => {
-        console.error('Erro ao carregar dados:', err);
+        console.warn('Falha no fetch inicial do JSON, utilizando window.STUDY_DATA:', err);
+        carregarDadosLocais();
       });
+  } else {
+    // Protocolo file:// ou standalone offline
+    carregarDadosLocais();
   }
 });
+
+function carregarDadosLocais() {
+  if (typeof window.STUDY_DATA !== 'undefined' && window.STUDY_DATA.records) {
+    allData = window.STUDY_DATA.records;
+    summaryData = window.STUDY_DATA.summary || {};
+  }
+  initDashboard();
+}
 
 function initDashboard() {
   updateThemeUI();
   populateMonthFilter();
+  updateMetadataUI();
   setupEventListeners();
   initCharts();
   applyFilters();
@@ -105,6 +122,9 @@ function getThemeColors() {
 // Populate Month dropdown dynamically
 function populateMonthFilter() {
   const mesSelect = document.getElementById('filterMes');
+  if (!mesSelect) return;
+  
+  mesSelect.innerHTML = '<option value="ALL">Todos os Meses</option>';
   const meses = [...new Set(allData.map(r => r.mes_ano).filter(Boolean))].sort((a, b) => {
     const [ma, ya] = a.split('/').map(Number);
     const [mb, yb] = b.split('/').map(Number);
@@ -129,11 +149,123 @@ function formatMonthName(mesAno) {
   return `${mesesNomes[idx]} / ${y}`;
 }
 
+// Update Metadata & Last Update Indicators
+function updateMetadataUI() {
+  const ultimaAtualizacaoEl = document.getElementById('ultimaAtualizacaoTexto');
+  const footerAtualizacaoEl = document.getElementById('footerUltimaAtualizacao');
+  const footerSessaoEl = document.getElementById('footerUltimaSessao');
+  const pillEl = document.getElementById('ultimaAtualizacaoPill');
+
+  // Determinar data da última atualização da carga
+  let dataAtualizacao = summaryData.data_atualizacao;
+  if (!dataAtualizacao) {
+    if (summaryData.data_fim) {
+      dataAtualizacao = summaryData.data_fim;
+    } else if (allData.length > 0) {
+      const sorted = [...allData].sort((a, b) => a.data.localeCompare(b.data));
+      dataAtualizacao = sorted[sorted.length - 1].data_formatada;
+    } else {
+      dataAtualizacao = 'Indisponível';
+    }
+  }
+
+  // Determinar última sessão registrada
+  const ultimaSessao = summaryData.ultima_sessao || (allData.length > 0 ? [...allData].sort((a, b) => a.data.localeCompare(b.data)).pop().data_formatada : 'Indisponível');
+  const modPlanilha = summaryData.data_modificacao_planilha || '';
+
+  if (ultimaAtualizacaoEl) {
+    ultimaAtualizacaoEl.textContent = dataAtualizacao;
+  }
+
+  if (footerAtualizacaoEl) {
+    footerAtualizacaoEl.textContent = dataAtualizacao;
+  }
+
+  if (footerSessaoEl) {
+    footerSessaoEl.textContent = ultimaSessao;
+  }
+
+  if (pillEl) {
+    let tooltip = `Base de dados atualizada em: ${dataAtualizacao}`;
+    if (modPlanilha) {
+      tooltip += ` | Planilha Excel: ${modPlanilha}`;
+    }
+    if (ultimaSessao) {
+      tooltip += ` | Última sessão de estudo: ${ultimaSessao}`;
+    }
+    pillEl.setAttribute('title', tooltip);
+  }
+}
+
+// Reload Data dynamically (from study_data.json)
+function reloadData() {
+  const reloadBtn = document.getElementById('btnReloadData');
+  if (reloadBtn) {
+    reloadBtn.classList.add('loading');
+    reloadBtn.disabled = true;
+  }
+
+  fetch(`study_data.json?t=${Date.now()}`)
+    .then(res => {
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      allData = data.records || [];
+      summaryData = data.summary || {};
+      populateMonthFilter();
+      updateMetadataUI();
+      applyFilters();
+      showToast('Dados e data de atualização sincronizados com sucesso!');
+    })
+    .catch(err => {
+      console.warn('Falha no fetch JSON, verificando window.STUDY_DATA:', err);
+      if (typeof window.STUDY_DATA !== 'undefined' && window.STUDY_DATA.records) {
+        allData = window.STUDY_DATA.records;
+        summaryData = window.STUDY_DATA.summary || {};
+        updateMetadataUI();
+        applyFilters();
+        showToast('Dados sincronizados do script local!');
+      } else {
+        showToast('Não foi possível recarregar os dados.', true);
+      }
+    })
+    .finally(() => {
+      if (reloadBtn) {
+        reloadBtn.classList.remove('loading');
+        reloadBtn.disabled = false;
+      }
+    });
+}
+
+let toastTimeout = null;
+function showToast(message, isError = false) {
+  const toast = document.getElementById('toastNotification');
+  if (!toast) return;
+
+  clearTimeout(toastTimeout);
+  toast.textContent = message;
+  toast.style.borderColor = isError ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+  toast.classList.add('show');
+
+  toastTimeout = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3500);
+}
+
 // Event Listeners for Filters
 function setupEventListeners() {
+  if (listenersAttached) return;
+  listenersAttached = true;
+
   const themeBtn = document.getElementById('btnThemeToggle');
   if (themeBtn) {
     themeBtn.addEventListener('click', toggleTheme);
+  }
+
+  const reloadBtn = document.getElementById('btnReloadData');
+  if (reloadBtn) {
+    reloadBtn.addEventListener('click', reloadData);
   }
 
   document.getElementById('filterFase').addEventListener('change', applyFilters);
