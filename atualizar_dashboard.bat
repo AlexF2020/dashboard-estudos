@@ -5,8 +5,8 @@ cd /d "%~dp0"
 echo ======================================================== >> log_atualizacao.txt
 echo [%date% %time%] Iniciando atualizacao automatica... >> log_atualizacao.txt
 
-REM 1. Sincronizar com o remoto antes para garantir base atualizada
-git pull --rebase origin main >> log_atualizacao.txt 2>&1
+REM 1. Sincronizar com o remoto antes de rodar o ETL
+git pull origin main >> log_atualizacao.txt 2>&1
 
 REM 2. Executar o processamento de dados (ETL em Python)
 python etl.py >> log_atualizacao.txt 2>&1
@@ -23,7 +23,6 @@ git diff --staged --quiet
 if errorlevel 1 (
     echo [%date% %time%] Enviando dados atualizados para o GitHub... >> log_atualizacao.txt
     git commit -m "Auto: Dados e data de atualizacao sincronizados [%date% %time%]" >> log_atualizacao.txt 2>&1
-    git pull --rebase origin main >> log_atualizacao.txt 2>&1
     git push origin main >> log_atualizacao.txt 2>&1
     if not errorlevel 1 (
         echo [%date% %time%] Publicacao remota no GitHub Pages concluida com sucesso! >> log_atualizacao.txt
