@@ -8,9 +8,9 @@ window.STUDY_DATA = {
     "total_disciplinas": 21,
     "data_inicio": "29/11/2025",
     "data_fim": "14/09/2026",
-    "data_atualizacao": "09/11/2026 às 16:15",
-    "data_atualizacao_iso": "2026-11-09T16:15:47.658733-03:00",
-    "data_modificacao_planilha": "09/11/2026 às 16:15",
+    "data_atualizacao": "10/11/2026 às 13:38",
+    "data_atualizacao_iso": "2026-11-10T13:38:24.714465-03:00",
+    "data_modificacao_planilha": "10/11/2026 às 13:38",
     "ultima_sessao": "14/09/2026"
   },
   "records": [
